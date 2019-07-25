@@ -45,7 +45,7 @@ parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
 parser.add_argument('--nonmono', type=int, default=5,
                     help='random seed')
-parser.add_argument('--cuda', action='store_false',
+parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
 parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                     help='report interval')
@@ -242,7 +242,8 @@ try:
             tmp = {}
             for prm in model.parameters():
                 tmp[prm] = prm.data.clone()
-                prm.data = optimizer.state[prm]['ax'].clone()
+                if 'ax' in optimizer.state[prm].keys():
+                    prm.data = optimizer.state[prm]['ax'].clone()
 
             val_loss2 = evaluate(val_data)
             print('-' * 89)

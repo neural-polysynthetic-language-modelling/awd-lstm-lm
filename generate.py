@@ -47,7 +47,7 @@ if args.temperature < 1e-3:
     parser.error("--temperature has to be greater or equal 1e-3")
 
 with open(args.checkpoint, 'rb') as f:
-    model = torch.load(f)
+    model, _, _ = torch.load(f)
 model.eval()
 if args.model == 'QRNN':
     model.reset()
@@ -59,20 +59,42 @@ else:
 
 corpus = data.Corpus(args.data)
 ntokens = len(corpus.dictionary)
-hidden = model.init_hidden(1)
-input = Variable(torch.rand(1, 1).mul(ntokens).long(), volatile=True)
+
+lines = []
+with open(args.data + 'test.txt', 'r') as test:
+    lines = test.readlines()
+lines = [line for line in lines if line.strip() != '']
+first_line = lines[0].split() + ['<eos>']
+first_word = first_line[0]
+
+# input = Variable(torch.rand(1, 1).mul(ntokens).long(), volatile=True)
+input = torch.tensor([[corpus.dictionary.word2idx[first_word]]])
 if args.cuda:
     input.data = input.data.cuda()
+hidden = model.init_hidden(1)
 
-with open(args.outf, 'w') as outf:
-    for i in range(args.words):
-        output, hidden = model(input, hidden)
-        word_weights = output.squeeze().data.div(args.temperature).exp().cpu()
-        word_idx = torch.multinomial(word_weights, 1)[0]
-        input.data.fill_(word_idx)
-        word = corpus.dictionary.idx2word[word_idx]
+success = 0
+error = 0
+wpa = 0
 
-        outf.write(word + ('\n' if i % 20 == 19 else ' '))
+with open(args.outf, 'a') as outf:
+    for line in lines:
+        tokens = line.split() + ['<eos>']
+        for token in tokens[1:]:
+            output, hidden = model(input, hidden)
+            word_weights = model.decoder(output).squeeze().data.div(args.temperature).exp().cpu()
+            word_idx = torch.multinomial(word_weights, 1)[0]
+            input.data.fill_(corpus.dictionary.word2idx[token])
+            try:
+                word = corpus.dictionary.idx2word[word_idx]
+            except:
+                word = '<unk>'
+            print(word, token)
 
-        if i % args.log_interval == 0:
-            print('| Generated {}/{} words'.format(i, args.words))
+            if word == token:
+                success +=  1
+            else:
+                error += 1
+
+        wpa = success / (success + error)
+    outf.write('\n' + args.checkpoint + ': ' + str(wpa))
