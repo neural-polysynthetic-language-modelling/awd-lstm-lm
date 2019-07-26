@@ -117,6 +117,8 @@ test_data = batchify(corpus.test, test_batch_size, args)
 from splitcross import SplitCrossEntropyLoss
 criterion = None
 
+ntokens = len(corpus.dictionary)
+emsize = corpus.dictionary.emsize
 model = model.RNNModel(args.model, corpus, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
 ###
 if args.resume:
@@ -141,7 +143,7 @@ if not criterion:
         # WikiText-103
         splits = [2800, 20000, 76000]
     print('Using', splits)
-    criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
+    criterion = SplitCrossEntropyLoss(emsize, splits=splits, verbose=False)
 ###
 if args.cuda:
     model = model.cuda()
@@ -250,8 +252,8 @@ try:
 
             val_loss2 = evaluate(val_data)
             print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:8.8f} | '
+                'valid ppl {:8.8f} | valid bpc {:8.3f}'.format(
                     epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
             print('-' * 89)
 
@@ -261,13 +263,14 @@ try:
                 stored_loss = val_loss2
 
             for prm in model.parameters():
+                print(tmp.keys())
                 prm.data = tmp[prm].clone()
 
         else:
             val_loss = evaluate(val_data, eval_batch_size)
             print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:8.8f} | '
+                'valid ppl {:8.8f} | valid bpc {:8.8f}'.format(
               epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
             print('-' * 89)
 
@@ -298,6 +301,6 @@ model_load(args.save)
 # Run on test data.
 test_loss = evaluate(test_data, test_batch_size)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
+print('| End of training | test loss {:10.10f} | test ppl {:10.10f} | test bpc {:8.3f}'.format(
     test_loss, math.exp(test_loss), test_loss / math.log(2)))
 print('=' * 89)

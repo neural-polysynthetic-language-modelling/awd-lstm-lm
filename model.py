@@ -20,12 +20,14 @@ class RNNModel(nn.Module):
         self.hdrop = nn.Dropout(dropouth)
         self.drop = nn.Dropout(dropout)
         ntoken = len(corpus.dictionary)
-        ninp = len(list(corpus.dictionary.values())[1])
+        ninp = corpus.dictionary.emsize
+        nhid = ninp
         self.encoder = torch.FloatTensor(ntoken, ninp)
         # fill the encoder with our vectors
         for word_i, word in enumerate(corpus.dictionary.idx2word):
             self.encoder[word_i] = corpus.dictionary.word2vec[word]
 
+        self.encoder = nn.Embedding.from_pretrained(self.encoder)
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
             self.rnns = [torch.nn.LSTM(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
@@ -40,20 +42,18 @@ class RNNModel(nn.Module):
             self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
             for rnn in self.rnns:
                 rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
-        print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
-
         # Optionally tie weights as in:
         # "Using the Output Embedding to Improve Language Models" (Press & Wolf 2016)
         # https://arxiv.org/abs/1608.05859
         # and
         # "Tying Word Vectors and Word Classifiers: A Loss Framework for Language Modeling" (Inan et al. 2016)
         # https://arxiv.org/abs/1611.01462
-        #if tie_weights:
-            #if nhid != ninp:
-            #    raise ValueError('When using the tied flag, nhid must be equal to emsize')
-            #self.decoder.weight = self.encoder.weight
+        if tie_weights:
+            if nhid != ninp:
+                raise ValueError('When using the tied flag, nhid must be equal to emsize')
+            self.decoder.weight = self.encoder.weight
 
         self.init_weights()
 
@@ -80,9 +80,9 @@ class RNNModel(nn.Module):
         probably want to remove the embedded_dropout call given our hand crafted vectors 
         """
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-        emb = self.idrop(emb)
+        #emb = self.idrop(emb)
 
-        emb = self.lockdrop(input, self.dropouti)
+        emb = self.lockdrop(emb, self.dropouti)
 
         raw_output = emb
         new_hidden = []
