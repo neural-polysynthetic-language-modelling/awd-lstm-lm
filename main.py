@@ -13,10 +13,14 @@ from utils import batchify, get_batch, repackage_hidden
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
 parser.add_argument('--data', type=str, default='data/penn/',
                     help='location of the data corpus')
+parser.add_argument("--morph_dict", type=str,
+                    help="location of pickle files containing mapping from morpheme to TPR vector representation")
+parser.add_argument("--morph_sep", type=str, default=">",
+                    help="symbol indicating boundary between morphemes")
 parser.add_argument('--model', type=str, default='LSTM',
                     help='type of recurrent net (LSTM, QRNN, GRU)')
-parser.add_argument('--emsize', type=int, default=400,
-                    help='size of word embeddings')
+#parser.add_argument('--emsize', type=int, default=400,
+#                    help='size of word embeddings')
 parser.add_argument('--nhid', type=int, default=1150,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=3,
@@ -97,7 +101,7 @@ if os.path.exists(fn):
     corpus = torch.load(fn)
 else:
     print('Producing dataset...')
-    corpus = data.Corpus(args.data)
+    corpus = data.Corpus(args.data, args.morph_dict, args.morph_sep)
     torch.save(corpus, fn)
 
 eval_batch_size = 10
@@ -113,8 +117,7 @@ test_data = batchify(corpus.test, test_batch_size, args)
 from splitcross import SplitCrossEntropyLoss
 criterion = None
 
-ntokens = len(corpus.dictionary)
-model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
+model = model.RNNModel(args.model, corpus, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
 ###
 if args.resume:
     print('Resuming model ...')

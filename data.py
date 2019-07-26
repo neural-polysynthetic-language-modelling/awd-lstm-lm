@@ -29,8 +29,8 @@ class Dictionary(object):
                                      for word in py_dict.keys()}
         
         else:
-            raise Exception("The pickle file " + dict_path + " specified
-                             is not present")
+            raise Exception("The pickle file " + dict_path +
+                            " specified is not present")
 
         self.idx2word = [word for word in self.word2vec.keys()]
         self.word2idx = {word[0]:word[1] for word in enumerate(self.idx2word)}
