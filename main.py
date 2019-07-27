@@ -7,7 +7,7 @@ import torch.nn as nn
 
 import data
 import model
-
+from iiksiin import *
 from utils import batchify, get_batch, repackage_hidden
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
@@ -66,6 +66,8 @@ parser.add_argument('--resume', type=str,  default='',
                     help='path of model to resume')
 parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
+parser.add_argument('--alphabet_file', type=str,
+                    help="alphabet file for character roles")
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 args = parser.parse_args()
@@ -247,8 +249,8 @@ try:
             tmp = {}
             for prm in model.parameters():
                 tmp[prm] = prm.data.clone()
-                if 'ax' in optimizer.state[prm].keys():
-                    prm.data = optimizer.state[prm]['ax'].clone()
+                prm.data = optimizer.state[prm]['ax'].clone()
+                #if 'ax' in optimizer.state[prm].keys():
 
             val_loss2 = evaluate(val_data)
             print('-' * 89)
