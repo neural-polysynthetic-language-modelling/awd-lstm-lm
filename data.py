@@ -94,14 +94,15 @@ class Corpus(object):
             ids = []
             token = 0
             for line in f:
-                words = line.split() + ['⌁']
+                print(token)
+                words = line.split()# + ['<eos>']
                 for word in words:
                     morphs = word.split(self.morph_sep)
                     print(self.dictionary.word2idx.keys())
                     for morph in morphs:
-                        if morph in self.dictionary.word2idx.keys():
+                        try:
                             ids.append(self.dictionary.word2idx[morph])
-                        else:
+                        except KeyError:
                             #print(self.dictionary.word2idx["<<unk>>"])
                             ids.append(self.dictionary.word2idx["<<unk>>"])
                         token += 1

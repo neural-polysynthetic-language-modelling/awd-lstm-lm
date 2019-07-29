@@ -76,7 +76,7 @@ parser.add_argument('--autoencoder_model', type=str, default='',
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 args = parser.parse_args()
-args.tied = True
+args.tied = False
 
 def get_freer_gpu():
     import os
