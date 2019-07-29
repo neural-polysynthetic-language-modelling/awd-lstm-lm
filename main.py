@@ -4,19 +4,26 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import os
+import pickle
 
 import data
 import model
-
+from iiksiin import *
+from autoencoder import UnbindingLoss, TrueTensorRetreiver, Autoencoder
 from utils import batchify, get_batch, repackage_hidden
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
 parser.add_argument('--data', type=str, default='data/penn/',
                     help='location of the data corpus')
+parser.add_argument("--morph_dict", type=str,
+                    help="location of pickle files containing mapping from morpheme to TPR vector representation")
+parser.add_argument("--morph_sep", type=str, default=">",
+                    help="symbol indicating boundary between morphemes")
 parser.add_argument('--model', type=str, default='LSTM',
                     help='type of recurrent net (LSTM, QRNN, GRU)')
-parser.add_argument('--emsize', type=int, default=400,
-                    help='size of word embeddings')
+#parser.add_argument('--emsize', type=int, default=400,
+#                    help='size of word embeddings')
 parser.add_argument('--nhid', type=int, default=1150,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=3,
@@ -62,20 +69,41 @@ parser.add_argument('--resume', type=str,  default='',
                     help='path of model to resume')
 parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
+parser.add_argument('--alphabet_file', type=str, default='', 
+                    help="alphabet file for character roles")
+parser.add_argument('--autoencoder_model', type=str, default='',
+                    help="path to dumped torch file of autoencoder params.")
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 args = parser.parse_args()
-args.tied = True
+args.tied = False
+
+def get_freer_gpu():
+    import os
+
+    os.system("nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >cuda")
+    memory_available = [int(x.split()[2]) for x in open("cuda", "r").readlines()]
+    import numpy as np
+
+    return np.argmax(memory_available)
+
+if os.path.exists(args.autoencoder_model):
+    autoencoder = torch.load(args.autoencoder_model).cuda()
+else:
+    raise Exception("the autoencoder model specified " + args.autoencoder_model + " does not exist")
 
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
+device= torch.device("cpu")
 if torch.cuda.is_available():
     if not args.cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     else:
         torch.cuda.manual_seed(args.seed)
-
+        device = torch.device(
+            f"cuda:{get_freer_gpu()}" if torch.cuda.is_available() else "cpu"
+         )
 ###############################################################################
 # Load data
 ###############################################################################
@@ -97,7 +125,7 @@ if os.path.exists(fn):
     corpus = torch.load(fn)
 else:
     print('Producing dataset...')
-    corpus = data.Corpus(args.data)
+    corpus = data.Corpus(args.data, args.morph_dict, args.morph_sep)
     torch.save(corpus, fn)
 
 eval_batch_size = 10
@@ -105,16 +133,21 @@ test_batch_size = 1
 train_data = batchify(corpus.train, args.batch_size, args)
 val_data = batchify(corpus.valid, eval_batch_size, args)
 test_data = batchify(corpus.test, test_batch_size, args)
-
 ###############################################################################
 # Build the model
 ###############################################################################
+if os.path.exists(args.alphabet_file):
+    with open(args.alphabet_file, "rb") as afile: 
+        alphabet = pickle.load(afile, encoding="utf8")
+else:
+    raise Exception("the alphabet file specified was not found")
 
 from splitcross import SplitCrossEntropyLoss
-criterion = None
-
+criterion = UnbindingLoss(alphabet=alphabet._symbols)
+retreiver = TrueTensorRetreiver(alphabet=alphabet._symbols, device=device)
 ntokens = len(corpus.dictionary)
-model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
+emsize = corpus.dictionary.emsize
+model = model.RNNModel(args.model, corpus, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
 ###
 if args.resume:
     print('Resuming model ...')
@@ -126,19 +159,6 @@ if args.resume:
         for rnn in model.rnns:
             if type(rnn) == WeightDrop: rnn.dropout = args.wdrop
             elif rnn.zoneout > 0: rnn.zoneout = args.wdrop
-###
-if not criterion:
-    splits = []
-    if ntokens > 500000:
-        # One Billion
-        # This produces fairly even matrix mults for the buckets:
-        # 0: 11723136, 1: 10854630, 2: 11270961, 3: 11219422
-        splits = [4200, 35000, 180000]
-    elif ntokens > 75000:
-        # WikiText-103
-        splits = [2800, 20000, 76000]
-    print('Using', splits)
-    criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
 ###
 if args.cuda:
     model = model.cuda()
@@ -192,8 +212,12 @@ def train():
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = repackage_hidden(hidden)
         optimizer.zero_grad()
-
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True)
+        print("Shape of targets: " + str(targets.shape))
+        print("Shape of outputs: " + str(output.shape))
+        output = autoencoder._apply_output_layer(output)
+        print("before applying output layer to targs")
+        correct = autoencoder._apply_output_layer(targets) # maybe not a great idea
         raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
 
         loss = raw_loss
@@ -242,13 +266,13 @@ try:
             tmp = {}
             for prm in model.parameters():
                 tmp[prm] = prm.data.clone()
-                if 'ax' in optimizer.state[prm].keys():
-                    prm.data = optimizer.state[prm]['ax'].clone()
+                prm.data = optimizer.state[prm]['ax'].clone()
+                #if 'ax' in optimizer.state[prm].keys():
 
             val_loss2 = evaluate(val_data)
             print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:8.8f} | '
+                'valid ppl {:8.8f} | valid bpc {:8.3f}'.format(
                     epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
             print('-' * 89)
 
@@ -258,13 +282,14 @@ try:
                 stored_loss = val_loss2
 
             for prm in model.parameters():
+                print(tmp.keys())
                 prm.data = tmp[prm].clone()
 
         else:
             val_loss = evaluate(val_data, eval_batch_size)
             print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
+            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:8.8f} | '
+                'valid ppl {:8.8f} | valid bpc {:8.8f}'.format(
               epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
             print('-' * 89)
 
@@ -295,6 +320,6 @@ model_load(args.save)
 # Run on test data.
 test_loss = evaluate(test_data, test_batch_size)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
+print('| End of training | test loss {:10.10f} | test ppl {:10.10f} | test bpc {:8.3f}'.format(
     test_loss, math.exp(test_loss), test_loss / math.log(2)))
 print('=' * 89)

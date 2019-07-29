@@ -6,14 +6,30 @@ from locked_dropout import LockedDropout
 from weight_drop import WeightDrop
 
 class RNNModel(nn.Module):
-    """Container module with an encoder, a recurrent module, and a decoder."""
+    """
+    Container module with an encoder, a recurrent module, and a decoder.
 
-    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False):
+    The main difference in the tpr version is that the encoder is statically 
+    specified via construction from the flattened tpr vectors.
+    """
+
+    def __init__(self, rnn_type, corpus, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False):
         super(RNNModel, self).__init__()
         self.lockdrop = LockedDropout()
         self.idrop = nn.Dropout(dropouti)
         self.hdrop = nn.Dropout(dropouth)
         self.drop = nn.Dropout(dropout)
+        ntoken = len(corpus.dictionary)
+        ninp = corpus.dictionary.emsize
+        self.encoder = torch.FloatTensor(ntoken, ninp)
+        self.full_conn = nn.Sequential(nn.Linear(ninp, 128),
+                                       nn.ReLU(),
+                                       nn.Linear(128, ninp))
+        # fill the encoder with our vectors
+        for word_i, word in enumerate(corpus.dictionary.idx2word):
+            self.encoder[word_i] = corpus.dictionary.word2vec[word]
+
+        #self.encoder = nn.Embedding.from_pretrained(self.encoder)
         self.encoder = nn.Embedding(ntoken, ninp)
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
@@ -29,10 +45,8 @@ class RNNModel(nn.Module):
             self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
             for rnn in self.rnns:
                 rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
-        print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
-
         # Optionally tie weights as in:
         # "Using the Output Embedding to Improve Language Models" (Press & Wolf 2016)
         # https://arxiv.org/abs/1608.05859
@@ -40,8 +54,8 @@ class RNNModel(nn.Module):
         # "Tying Word Vectors and Word Classifiers: A Loss Framework for Language Modeling" (Inan et al. 2016)
         # https://arxiv.org/abs/1611.01462
         if tie_weights:
-            #if nhid != ninp:
-            #    raise ValueError('When using the tied flag, nhid must be equal to emsize')
+            if nhid != ninp:
+                raise ValueError('When using the tied flag, nhid must be equal to emsize')
             self.decoder.weight = self.encoder.weight
 
         self.init_weights()
@@ -61,19 +75,16 @@ class RNNModel(nn.Module):
 
     def init_weights(self):
         initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, input, hidden, return_h=False):
+        """
+        probably want to remove the embedded_dropout call given our hand crafted vectors 
+        """
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-        #emb = self.idrop(emb)
-
-        emb = self.lockdrop(emb, self.dropouti)
-
-        raw_output = emb
+        raw_output = self.full_conn(emb)
         new_hidden = []
-        #raw_output, hidden = self.rnn(emb, hidden)
         raw_outputs = []
         outputs = []
         for l, rnn in enumerate(self.rnns):
@@ -82,7 +93,6 @@ class RNNModel(nn.Module):
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
             if l != self.nlayers - 1:
-                #self.hdrop(raw_output)
                 raw_output = self.lockdrop(raw_output, self.dropouth)
                 outputs.append(raw_output)
         hidden = new_hidden
