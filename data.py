@@ -98,6 +98,7 @@ class Corpus(object):
                 words = line.split()# + ['<eos>']
                 for word in words:
                     morphs = word.split(self.morph_sep)
+                    print(self.dictionary.word2idx.keys())
                     for morph in morphs:
                         try:
                             ids.append(self.dictionary.word2idx[morph])
