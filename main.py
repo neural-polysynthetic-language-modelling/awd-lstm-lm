@@ -69,7 +69,7 @@ parser.add_argument('--optimizer', type=str,  default='sgd',
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 args = parser.parse_args()
-args.tied = True
+args.tied = False
 
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)

@@ -21,13 +21,16 @@ class RNNModel(nn.Module):
         self.drop = nn.Dropout(dropout)
         ntoken = len(corpus.dictionary)
         ninp = corpus.dictionary.emsize
-        nhid = ninp
         self.encoder = torch.FloatTensor(ntoken, ninp)
+        self.full_conn = nn.Sequential(nn.Linear(ninp, 128),
+                                       nn.ReLU(),
+                                       nn.Linear(128, ninp))
         # fill the encoder with our vectors
         for word_i, word in enumerate(corpus.dictionary.idx2word):
             self.encoder[word_i] = corpus.dictionary.word2vec[word]
 
-        self.encoder = nn.Embedding.from_pretrained(self.encoder)
+        #self.encoder = nn.Embedding.from_pretrained(self.encoder)
+        self.encoder = nn.Embedding(ntoken, ninp)
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
             self.rnns = [torch.nn.LSTM(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
@@ -80,13 +83,8 @@ class RNNModel(nn.Module):
         probably want to remove the embedded_dropout call given our hand crafted vectors 
         """
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-        #emb = self.idrop(emb)
-
-        emb = self.lockdrop(emb, self.dropouti)
-
-        raw_output = emb
+        raw_output = self.full_conn(emb)
         new_hidden = []
-        #raw_output, hidden = self.rnn(emb, hidden)
         raw_outputs = []
         outputs = []
         for l, rnn in enumerate(self.rnns):
@@ -95,7 +93,6 @@ class RNNModel(nn.Module):
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
             if l != self.nlayers - 1:
-                #self.hdrop(raw_output)
                 raw_output = self.lockdrop(raw_output, self.dropouth)
                 outputs.append(raw_output)
         hidden = new_hidden

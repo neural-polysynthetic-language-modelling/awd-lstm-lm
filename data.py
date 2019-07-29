@@ -36,7 +36,7 @@ class Dictionary(object):
         self.counter = Counter()
         self.total = 0
         self.idx2word = [word for word in self.word2vec.keys()]
-        self.word2idx = {word[0]:word[1] for word in enumerate(self.idx2word)}
+        self.word2idx = {word[1]:word[0] for word in enumerate(self.idx2word)}
         self.add_unk()
 
     #def add_space(self):
@@ -95,12 +95,12 @@ class Corpus(object):
             token = 0
             for line in f:
                 print(token)
-                words = line.split() + ['<eos>']
+                words = line.split()# + ['<eos>']
                 for word in words:
                     morphs = word.split(self.morph_sep)
                     for morph in morphs:
                         try:
-                            ids[token] = self.dictionary.word2idx[morph]
+                            ids.append(self.dictionary.word2idx[morph])
                         except KeyError:
                             #print(self.dictionary.word2idx["<<unk>>"])
                             ids.append(self.dictionary.word2idx["<<unk>>"])
