@@ -7,7 +7,7 @@ import torch.nn as nn
 
 import data
 import model
-
+from collections import Counter
 from utils import batchify, get_batch, repackage_hidden
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
@@ -70,6 +70,8 @@ parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
+parser.add_argument('--prediction_count_file', type=str, default="last.preds",
+                    help="specifies where to write the file with prediction counts for each word")
 args = parser.parse_args()
 args.tied = False
 
@@ -160,18 +162,35 @@ print('Model total parameters:', total_params)
 # Training code
 ###############################################################################
 
-def evaluate(data_source, batch_size=10):
+def evaluate(data_source, batch_size=10, test=False):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if args.model == 'QRNN': model.reset()
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
+    word_pred_count = {}
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
+        if test:
+            word_weights = model.decoder(output).squeeze().data.div(1).exp().cpu()
+            word_idx = torch.multinomial(word_weights, 1)
+            for word in word_idx:
+                try:
+                    word_pred_count[corpus.dictionary.idx2word[word.item()]] += 1
+                except KeyError:
+                    word_pred_count[corpus.dictionary.idx2word[word.item()]] = 1
+
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
+
+    if test:
+        print("Writing output")
+        with open(args.prediction_count_file, "w") as pred_file:
+            for word_i in word_pred_count:
+                pred_file.write(word_i + "\t" + str(word_pred_count[word_i]) + "\n")
+
     return total_loss.item() / len(data_source)
 
 
@@ -301,7 +320,7 @@ except KeyboardInterrupt:
 model_load(args.save)
 
 # Run on test data.
-test_loss = evaluate(test_data, test_batch_size)
+test_loss = evaluate(test_data, test_batch_size, test=True)
 print('=' * 89)
 print('| End of training | test loss {:10.10f} | test ppl {:10.10f} | test bpc {:8.3f}'.format(
     test_loss, math.exp(test_loss), test_loss / math.log(2)))
