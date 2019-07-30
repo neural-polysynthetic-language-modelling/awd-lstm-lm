@@ -81,10 +81,10 @@ class Corpus(object):
         print(self.dictionary)
         self.morph_sep = morph_sep
         self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
+        self.valid = self.tokenize(os.path.join(path, 'valid.txt'), train_corpus=False)
+        self.test = self.tokenize(os.path.join(path, 'test.txt'), train_corpus=False)
 
-    def tokenize(self, path):
+    def tokenize(self, path, train_corpus=True):
         """Tokenizes a text file."""
         assert os.path.exists(path)
         # Tokenize file content
@@ -93,18 +93,19 @@ class Corpus(object):
         with open(path, 'r') as f:
             ids = []
             token = 0
+            unk_tally = Counter()
             for line in f:
-                print(token)
                 words = line.split()# + ['<eos>']
                 for word in words:
-                    morphs = word.split(self.morph_sep)
-                    print(self.dictionary.word2idx.keys())
-                    for morph in morphs:
-                        try:
-                            ids.append(self.dictionary.word2idx[morph])
-                        except KeyError:
-                            #print(self.dictionary.word2idx["<<unk>>"])
-                            ids.append(self.dictionary.word2idx["<<unk>>"])
+                    try:
+                        ids.append(self.dictionary.word2idx[word])
+                    except KeyError:
+                        if train_corpus:
+                            unk_tally.update(word)
+
+                        ids.append(self.dictionary.word2idx["<<unk>>"])
+
                         token += 1
 
+        print(unk_tally)
         return torch.LongTensor(ids)

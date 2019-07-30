@@ -24,11 +24,8 @@ parser.add_argument('--model', type=str, default='LSTM',
                     help='type of recurrent net (LSTM, QRNN, GRU)')
 #parser.add_argument('--emsize', type=int, default=400,
 #                    help='size of word embeddings')
-parser.add_argument("--autoenc_loss", type=bool, default=False,
-                    help="""
-                    Spedifies whether to use the autoencoder loss or not.
-                    if this flat is not specified, SplitCrossEntropy is used instead
-                    """
+parser.add_argument("--learned_embed", action="store_true",
+                    help="determines whether the embeddings should be learned or deterministically provided by morpheme_dict")
 parser.add_argument('--nhid', type=int, default=1150,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=3,
@@ -152,7 +149,7 @@ criterion = UnbindingLoss(alphabet=alphabet._symbols)
 retreiver = TrueTensorRetreiver(alphabet=alphabet._symbols, device=device)
 ntokens = len(corpus.dictionary)
 emsize = corpus.dictionary.emsize
-model = model.RNNModel(args.model, corpus, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
+model = model.RNNModel(args.model, corpus, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied, args.learned_embed)
 ###
 if args.resume:
     print('Resuming model ...')
