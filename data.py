@@ -104,6 +104,7 @@ class Corpus(object):
                             unk_tally.update(word)
 
                         ids.append(self.dictionary.word2idx["<<unk>>"])
+
                         token += 1
 
         print(unk_tally)

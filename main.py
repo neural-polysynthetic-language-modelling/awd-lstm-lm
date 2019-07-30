@@ -161,6 +161,21 @@ if args.resume:
         for rnn in model.rnns:
             if type(rnn) == WeightDrop: rnn.dropout = args.wdrop
             elif rnn.zoneout > 0: rnn.zoneout = args.wdrop
+
+### If we did not specify unbinding loss then
+if not criterion:
+    splits = []
+    if ntokens > 500000:
+        # One Billion
+        # This produces fairly even matrix mults for the buckets:
+        # 0: 11723136, 1: 10854630, 2: 11270961, 3: 11219422
+        splits = [4200, 35000, 180000]
+    elif ntokens > 75000:
+        # WikiText-103
+        splits = [2800, 20000, 76000]
+    print('Using', splits)
+    criterion = SplitCrossEntropyLoss(emsize, splits=splits, verbose=False)
+###
 ###
 if args.cuda:
     model = model.cuda()
