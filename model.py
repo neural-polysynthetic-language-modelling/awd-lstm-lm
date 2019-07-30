@@ -13,7 +13,7 @@ class RNNModel(nn.Module):
     specified via construction from the flattened tpr vectors.
     """
 
-    def __init__(self, rnn_type, corpus, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False):
+    def __init__(self, rnn_type, corpus, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False, learned_embeddings=False):
         super(RNNModel, self).__init__()
         self.lockdrop = LockedDropout()
         self.idrop = nn.Dropout(dropouti)
@@ -29,8 +29,11 @@ class RNNModel(nn.Module):
         for word_i, word in enumerate(corpus.dictionary.idx2word):
             self.encoder[word_i] = corpus.dictionary.word2vec[word]
 
-        #self.encoder = nn.Embedding.from_pretrained(self.encoder)
-        self.encoder = nn.Embedding(ntoken, ninp)
+        self.encoder = nn.Embedding.from_pretrained(self.encoder)
+        if learned_embeddings:
+            print("using learned embeddings with random initializations")
+            self.encoder = nn.Embedding(ntoken, ninp)
+
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
             self.rnns = [torch.nn.LSTM(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
