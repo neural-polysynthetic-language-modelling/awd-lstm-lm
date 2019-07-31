@@ -4,7 +4,6 @@ import torch
 import pickle
 from collections import Counter
 
-
 class Dictionary(object):
     """
     This class contains the mapping from words to indexes and from indexes
@@ -93,18 +92,23 @@ class Corpus(object):
         with open(path, 'r') as f:
             ids = []
             token = 0
-            unk_tally = Counter()
+            unk_tally = {}
             for line in f:
                 words = line.split()# + ['<eos>']
                 for word in words:
-                    try:
+                    if word in self.dictionary.word2idx.keys():
                         ids.append(self.dictionary.word2idx[word])
-                    except KeyError:
+                    else:
                         if train_corpus:
-                            unk_tally.update(word)
+                            try: 
+                                unk_tally[word] += 1
+                            except KeyError:
+                                unk_tally[word] = 1
 
                         ids.append(self.dictionary.word2idx["<<unk>>"])
                         token += 1
 
-        print(unk_tally)
+        for word in unk_tally.keys():
+            print(word + "\t" + str(unk_tally[word]))
+
         return torch.LongTensor(ids)
