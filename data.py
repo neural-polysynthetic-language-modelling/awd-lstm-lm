@@ -82,15 +82,17 @@ class Corpus(object):
         print(self.dictionary)
         self.morph_sep = morph_sep
         self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'), train_corpus=False)
-        self.test = self.tokenize(os.path.join(path, 'test.txt'), train_corpus=False)
+        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
+        self.test = self.tokenize(os.path.join(path, 'test.txt'))
 
-    def tokenize(self, path, vect_size):
+    def tokenize(self, path):
         """
         Tokenizes a text file.
         
         eos is added at the end. The autoencoded tpr vectors 
         used by dictionary are assumed to contain eos.
+
+        something might be going weird with words that are unanalyzed (e.g. those that begin with *)
         """
         assert os.path.exists(path)
         # Tokenize file content
@@ -98,12 +100,19 @@ class Corpus(object):
         #print("n-tokens " + str(n_tokens))
         with open(path, 'r') as f:
             vects = []
+            print("Reading in the file")
             #token = 0
             for line in f:
                 #print(token)
                 words = line.split() + ['<eos>']
                 for word in words:
-                    vects.append(float(word))
+                    try:
+                        vects.append(self.dictionary.word2vec[word])
+                    except KeyError:
+                        vects.append(self.dictionary.word2vec["<<unk>>"])
 
-        return torch.FloatTensor(vects)
+
+        res = torch.stack(vects, 1)
+        print(res.shape)
+        return torch.stack(vects, 1)
 

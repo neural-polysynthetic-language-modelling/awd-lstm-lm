@@ -12,8 +12,8 @@ import model
 import os
 import hashlib
 
-#from iiksiin import *
-#from autoencoder import UnbindingLoss, TrueTensorRetreiver, Autoencoder
+from iiksiin import *
+from autoencoder import UnbindingLoss, TrueTensorRetreiver, Autoencoder
 from utils import batchify, get_batch, repackage_hidden
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
@@ -140,8 +140,12 @@ else:
 
 eval_batch_size = 10
 test_batch_size = 1
+print("Shape of train data before batchify: " + str(corpus.train.shape))
 train_data = batchify(corpus.train, args.batch_size, args)
+print("Shape of train data after batchify: " + str(train_data.shape))
+print("Shape of val data before batchify: " + str(corpus.valid.shape))
 val_data = batchify(corpus.valid, eval_batch_size, args)
+print("Shape of val data after batchify: " + str(val_data.shape))
 test_data = batchify(corpus.test, test_batch_size, args)
 ###############################################################################
 # Build the model
@@ -205,22 +209,29 @@ def evaluate(data_source, batch_size=10):
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
-    word_pred_count = Counter()
-    for i in range(0, data_source.size(0) - 1, args.bptt):
+    word_pred_count = {}
+    for i in range(0, data_source.size(1) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
-        word_weights = model.decoder(output).squeeze().cpu()
-        word_idx = torch.multinomial(word_weights, 1)[0]
-        words = corpus.dictionary.idx2word[word_idx]
+        if test:
+            word_weights = model.decoder(output).squeeze().data.div(1).exp().cpu()
+            word_idx = torch.multinomial(word_weights, 1)
+            for word in word_idx:
+                try:
+                    word_pred_count[corpus.dictionary.idx2word[word.item()]] += 1
+                except KeyError:
+                    word_pred_count[corpus.dictionary.idx2word[word.item()]] = 1
+
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
-        
-    # write out the word prediction counts to a file
-    with open(args.prediction_count_file, 'w') as pred_file:
-        for 
-            
-    return total_loss.item() / len(data_source)
 
+    if test:
+        print("Writing output")
+        with open(args.prediction_count_file, "w") as pred_file:
+            for word_i in word_pred_count:
+                pred_file.write(word_i + "\t" + str(word_pred_count[word_i]) + "\n")
+
+    return total_loss.item() / len(data_source)
 
 def train():
     # Turn on training mode which enables dropout.
@@ -230,7 +241,7 @@ def train():
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
     batch, i = 0, 0
-    while i < train_data.size(0) - 1 - 1:
+    while i < train_data.size(1) - 1 - 1:
         bptt = args.bptt if np.random.random() < 0.95 else args.bptt / 2.
         # Prevent excessively small or negative sequence lengths
         seq_len = max(5, int(np.random.normal(bptt, 5)))
@@ -241,11 +252,13 @@ def train():
         optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
         model.train()
         data, targets = get_batch(train_data, i, args, seq_len=seq_len)
-
+        print(train_data.shape)
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = repackage_hidden(hidden)
         optimizer.zero_grad()
+        print("INput data shape")
+        print(data.shape)
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, hidden, return_h=True)
         print("Shape of targets: " + str(targets.shape))
         print("Shape of outputs: " + str(output.shape))
@@ -320,6 +333,8 @@ try:
                 prm.data = tmp[prm].clone()
 
         else:
+            print("Val data shape")
+            print(val_data.shape)
             val_loss = evaluate(val_data, eval_batch_size)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:8.8f} | '

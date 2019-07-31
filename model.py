@@ -19,14 +19,10 @@ class RNNModel(nn.Module):
         self.idrop = nn.Dropout(dropouti)
         self.hdrop = nn.Dropout(dropouth)
         self.drop = nn.Dropout(dropout)
-        ninp = next(iter(corpus.dictionary.word2vec.values()))[0]
-        self.encoder = torch.FloatTensor(ntoken, ninp)
+        ninp = len(next(iter(corpus.dictionary.word2vec.values())))
         self.full_conn = nn.Sequential(nn.Linear(ninp, 128),
                                        nn.ReLU(),
-                                       nn.Linear(128, ninp))
-        # fill the encoder with our vectors
-        for word_i, word in enumerate(corpus.dictionary.idx2word):
-            self.encoder[word_i] = corpus.dictionary.word2vec[word]
+                                       nn.Linear(128, nhid))
 
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
@@ -79,8 +75,8 @@ class RNNModel(nn.Module):
         """
         probably want to remove the embedded_dropout call given our hand crafted vectors 
         """
-        emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
-        raw_output = self.full_conn(emb)
+        print(input.shape)
+        raw_output = self.full_conn(input.transpose(0,2))
         new_hidden = []
         raw_outputs = []
         outputs = []
