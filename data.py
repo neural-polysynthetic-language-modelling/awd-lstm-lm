@@ -82,8 +82,8 @@ class Corpus(object):
         print(self.dictionary)
         self.morph_sep = morph_sep
         self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
+        self.valid = self.tokenize(os.path.join(path, 'valid.txt'), train_corpus=False)
+        self.test = self.tokenize(os.path.join(path, 'test.txt'), train_corpus=False)
 
     def tokenize(self, path, vect_size):
         """
@@ -106,3 +106,4 @@ class Corpus(object):
                     vects.append(float(word))
 
         return torch.FloatTensor(vects)
+
