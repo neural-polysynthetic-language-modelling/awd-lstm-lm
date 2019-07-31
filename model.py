@@ -19,8 +19,7 @@ class RNNModel(nn.Module):
         self.idrop = nn.Dropout(dropouti)
         self.hdrop = nn.Dropout(dropouth)
         self.drop = nn.Dropout(dropout)
-        ntoken = len(corpus.dictionary)
-        ninp = corpus.dictionary.emsize
+        ninp = next(iter(corpus.dictionary.word2vec.values()))[0]
         self.encoder = torch.FloatTensor(ntoken, ninp)
         self.full_conn = nn.Sequential(nn.Linear(ninp, 128),
                                        nn.ReLU(),
@@ -29,8 +28,6 @@ class RNNModel(nn.Module):
         for word_i, word in enumerate(corpus.dictionary.idx2word):
             self.encoder[word_i] = corpus.dictionary.word2vec[word]
 
-        #self.encoder = nn.Embedding.from_pretrained(self.encoder)
-        self.encoder = nn.Embedding(ntoken, ninp)
         assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
             self.rnns = [torch.nn.LSTM(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
@@ -46,7 +43,7 @@ class RNNModel(nn.Module):
             for rnn in self.rnns:
                 rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
         self.rnns = torch.nn.ModuleList(self.rnns)
-        self.decoder = nn.Linear(nhid, ntoken)
+        self.decoder = nn.Linear(nhid, corpus.dictionary.emsize) #maybe come back to this.
         # Optionally tie weights as in:
         # "Using the Output Embedding to Improve Language Models" (Press & Wolf 2016)
         # https://arxiv.org/abs/1608.05859

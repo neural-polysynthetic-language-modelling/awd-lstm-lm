@@ -9,8 +9,11 @@ import pickle
 
 import data
 import model
-from iiksiin import *
-from autoencoder import UnbindingLoss, TrueTensorRetreiver, Autoencoder
+import os
+import hashlib
+
+#from iiksiin import *
+#from autoencoder import UnbindingLoss, TrueTensorRetreiver, Autoencoder
 from utils import batchify, get_batch, repackage_hidden
 
 parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
@@ -28,7 +31,7 @@ parser.add_argument("--autoenc_loss", type=bool, default=False,
                     help="""
                     Spedifies whether to use the autoencoder loss or not.
                     if this flat is not specified, SplitCrossEntropy is used instead
-                    """
+                    """)
 parser.add_argument('--nhid', type=int, default=1150,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=3,
@@ -80,6 +83,8 @@ parser.add_argument('--autoencoder_model', type=str, default='',
                     help="path to dumped torch file of autoencoder params.")
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
+parser.add_argument('--prediction_count_file', type=str, default="last.preds",
+                    help="specifies where to write the file with prediction counts for each word")
 args = parser.parse_args()
 args.tied = False
 
@@ -92,10 +97,10 @@ def get_freer_gpu():
 
     return np.argmax(memory_available)
 
-if os.path.exists(args.autoencoder_model):
-    autoencoder = torch.load(args.autoencoder_model).cuda()
-else:
-    raise Exception("the autoencoder model specified " + args.autoencoder_model + " does not exist")
+#if os.path.exists(args.autoencoder_model):
+#    autoencoder = torch.load(args.autoencoder_model).cuda()
+#else:
+#    raise Exception("the autoencoder model specified " + args.autoencoder_model + " does not exist")
 
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
@@ -122,8 +127,6 @@ def model_load(fn):
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
 
-import os
-import hashlib
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
 if os.path.exists(fn):
     print('Loading cached dataset...')
@@ -200,11 +203,20 @@ def evaluate(data_source, batch_size=10):
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
+    word_pred_count = Counter()
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
+        word_weights = model.decoder(output).squeeze().cpu()
+        word_idx = torch.multinomial(word_weights, 1)[0]
+        words = corpus.dictionary.idx2word[word_idx]
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
+        
+    # write out the word prediction counts to a file
+    with open(args.prediction_count_file, 'w') as pred_file:
+        for 
+            
     return total_loss.item() / len(data_source)
 
 

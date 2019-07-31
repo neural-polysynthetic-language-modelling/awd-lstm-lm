@@ -75,6 +75,7 @@ class Dictionary(object):
 
 
 class Corpus(object):
+
     def __init__(self, path, dict_path, morph_sep=">"):
         print("Hello")
         self.dictionary = Dictionary(dict_path)
@@ -84,27 +85,24 @@ class Corpus(object):
         self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
         self.test = self.tokenize(os.path.join(path, 'test.txt'))
 
-    def tokenize(self, path):
-        """Tokenizes a text file."""
+    def tokenize(self, path, vect_size):
+        """
+        Tokenizes a text file.
+        
+        eos is added at the end. The autoencoded tpr vectors 
+        used by dictionary are assumed to contain eos.
+        """
         assert os.path.exists(path)
         # Tokenize file content
-        n_tokens = len(self.dictionary)
-        print("n-tokens " + str(n_tokens))
+        #n_tokens = len(self.dictionary)
+        #print("n-tokens " + str(n_tokens))
         with open(path, 'r') as f:
-            ids = []
-            token = 0
+            vects = []
+            #token = 0
             for line in f:
-                print(token)
-                words = line.split()# + ['<eos>']
+                #print(token)
+                words = line.split() + ['<eos>']
                 for word in words:
-                    morphs = word.split(self.morph_sep)
-                    print(self.dictionary.word2idx.keys())
-                    for morph in morphs:
-                        try:
-                            ids.append(self.dictionary.word2idx[morph])
-                        except KeyError:
-                            #print(self.dictionary.word2idx["<<unk>>"])
-                            ids.append(self.dictionary.word2idx["<<unk>>"])
-                        token += 1
+                    vects.append(float(word))
 
-        return torch.LongTensor(ids)
+        return torch.FloatTensor(vects)
